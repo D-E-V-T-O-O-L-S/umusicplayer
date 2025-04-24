@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ultimate Media Player</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #101010;
+      color: #fff;
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      color: #0ff;
+    }
+    .dropzone {
+      border: 2px dashed #0ff;
+      padding: 1rem;
+      width: 100%;
+      max-width: 500px;
+      margin-bottom: 1rem;
+      text-align: center;
+      border-radius: 10px;
+    }
+    .player {
+      background: #222;
+      padding: 1rem;
+      border-radius: 10px;
+      margin-bottom: 2rem;
+      width: 100%;
+      max-width: 500px;
+    }
+    audio, video {
+      width: 100%;
+      margin-bottom: 0.5rem;
+    }
+    input[type="file"] {
+      margin-top: 0.5rem;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0.5rem 0;
+    }
+    li {
+      cursor: pointer;
+      padding: 5px;
+      border-bottom: 1px solid #333;
+    }
+    li:hover {
+      background: #333;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎵 Ultimate MP3 & MP4 Player</h1>
+
+  <div class="dropzone" id="dropzone">Drop files here or select them below</div>
+  <input type="file" id="fileInput" accept=".mp3,.mp4" multiple />
+
+  <div class="player">
+    <h2>🎶 Playlist</h2>
+    <ul id="playlist"></ul>
+    <audio id="audioPlayer" controls></audio>
+    <video id="videoPlayer" controls style="display: none;"></video>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const dropzone = document.getElementById('dropzone');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const videoPlayer = document.getElementById('videoPlayer');
+    const playlist = document.getElementById('playlist');
+
+    let mediaFiles = [];
+
+    function loadFromStorage() {
+      const stored = JSON.parse(localStorage.getItem("mediaFiles") || "[]");
+      mediaFiles = stored.map(file => {
+        return { name: file.name, url: file.url, type: file.type };
+      });
+      renderPlaylist();
+    }
+
+    function saveToStorage() {
+      localStorage.setItem("mediaFiles", JSON.stringify(mediaFiles));
+    }
+
+    function renderPlaylist() {
+      playlist.innerHTML = '';
+      mediaFiles.forEach((file, index) => {
+        const li = document.createElement('li');
+        li.textContent = file.name;
+        li.onclick = () => playFile(index);
+        playlist.appendChild(li);
+      });
+    }
+
+    function handleFiles(files) {
+      for (const file of files) {
+        const url = URL.createObjectURL(file);
+        mediaFiles.push({ name: file.name, url: url, type: file.type });
+      }
+      saveToStorage();
+      renderPlaylist();
+    }
+
+    function playFile(index) {
+      const file = mediaFiles[index];
+      if (!file) return;
+
+      if (file.type.startsWith('audio')) {
+        videoPlayer.style.display = 'none';
+        audioPlayer.style.display = 'block';
+        audioPlayer.src = file.url;
+        audioPlayer.play();
+      } else if (file.type.startsWith('video')) {
+        audioPlayer.style.display = 'none';
+        videoPlayer.style.display = 'block';
+        videoPlayer.src = file.url;
+        videoPlayer.play();
+      }
+    }
+
+    fileInput.addEventListener('change', () => {
+      handleFiles(fileInput.files);
+    });
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.style.background = '#0ff2';
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.style.background = '';
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.style.background = '';
+      handleFiles(e.dataTransfer.files);
+    });
+
+    // Load saved playlist
+    loadFromStorage();
+  </script>
+</body>
+</html>
