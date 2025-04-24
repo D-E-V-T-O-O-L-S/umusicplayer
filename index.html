@@ -1,214 +1,280 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Next-Gen Music Player - All Phases</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#0ff" />
+  <link rel="manifest" href="app.webmanifest" />
+  <title>Media Player Pro+</title>
   <style>
     body {
-      font-family: sans-serif;
+      font-family: 'Segoe UI', sans-serif;
       background: #111;
       color: #fff;
-      text-align: center;
-      margin: 0;
-      padding: 0;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
-    canvas {
+    h1 {
+      color: #0ff;
+    }
+    input, select, button {
+      padding: 0.4rem;
+      border-radius: 6px;
+      margin: 0.2rem;
+      border: none;
+    }
+    .controls, .playlist-container {
       width: 100%;
-      height: 150px;
-      background: #000;
+      max-width: 600px;
+      background: #222;
+      padding: 1rem;
+      border-radius: 10px;
+      margin: 1rem 0;
     }
-    .playlist, .controls {
-      margin: 20px;
-    }
-    #fileInput {
-      margin: 10px;
-    }
-    #videoPlayer {
-      width: 100%;
-      height: 320px;
-      background: #000;
-    }
-    .qr-code {
-      margin-top: 20px;
+    .dropzone {
+      border: 2px dashed #0ff;
+      padding: 1rem;
       text-align: center;
+      border-radius: 10px;
+      margin-bottom: 1rem;
+    }
+    audio, video {
+      width: 100%;
+      margin-top: 10px;
+    }
+    .playlist-entry {
+      display: flex;
+      align-items: center;
+      background: #333;
+      border-radius: 6px;
+      padding: 5px;
+      margin-bottom: 6px;
+    }
+    .playlist-entry img {
+      width: 40px;
+      height: 40px;
+      object-fit: cover;
+      border-radius: 4px;
+      margin-right: 10px;
+    }
+    .playlist-entry span {
+      flex-grow: 1;
+      cursor: pointer;
+    }
+    .playlist-entry button {
+      background: #ff4444;
+      color: white;
+      margin-left: 5px;
+    }
+    .album-section {
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
+  <h1>🎵 Media Player Pro+</h1>
 
-  <h1>🎶 All-in-One Music & Video Player</h1>
-
-  <!-- Visualizer (Audio Spectrum) -->
-  <canvas id="visualizer"></canvas>
-
-  <!-- Video Player -->
-  <video id="videoPlayer" controls></video>
-
-  <!-- Audio Player -->
-  <audio id="audioPlayer" controls></audio>
-
-  <!-- File Input and Controls -->
   <div class="controls">
-    <input type="file" id="fileInput" accept="audio/*, video/*">
-    <button onclick="toggleVideoTrim()">🎞 Trim Video</button>
-    <button onclick="generateQRCode()">📲 Generate QR Code</button>
+    <input type="file" id="fileInput" accept=".mp3,.mp4" multiple />
+    <div class="dropzone" id="dropzone">Drop MP3/MP4 files here</div>
+
+    <input type="text" id="urlInput" placeholder="Add online URL" />
+    <button onclick="addUrl()">➕ Add URL</button>
+
+    <input type="text" id="albumName" placeholder="Album name" />
+    <button onclick="createAlbum()">🎼 Create Album</button>
+
+    <select id="albumSelect"></select>
+    <button onclick="saveAlbum()">💾 Save Album</button>
+    <button onclick="loadAlbum()">📂 Load</button>
+    <button onclick="deleteAlbum()">🗑️ Delete</button>
+
+    <div>
+      <button onclick="toggleShuffle()">🎲 Shuffle: <span id="shuffleState">Off</span></button>
+      <button onclick="toggleRepeat()">🔁 Repeat: <span id="repeatState">Off</span></button>
+    </div>
   </div>
 
-  <!-- Playlist Section -->
-  <div class="playlist">
-    <h3>Your Playlist</h3>
-    <button onclick="exportPlaylist()">Export Playlist</button>
-    <button onclick="importPlaylist()">Import Playlist</button>
+  <div class="playlist-container">
+    <h2>Playlist</h2>
     <ul id="playlist"></ul>
+    <audio id="audioPlayer" controls></audio>
+    <video id="videoPlayer" controls style="display: none;"></video>
   </div>
-
-  <!-- QR Code Display -->
-  <div class="qr-code" id="qrCode"></div>
-
-  <!-- Audio Context Setup -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode"></script>
 
   <script>
-    const audio = document.getElementById("audioPlayer");
-    const video = document.getElementById("videoPlayer");
-    const canvas = document.getElementById("visualizer");
-    const ctx = canvas.getContext("2d");
-    const qrCodeElement = document.getElementById("qrCode");
+    const audioPlayer = document.getElementById('audioPlayer');
+    const videoPlayer = document.getElementById('videoPlayer');
+    const playlistEl = document.getElementById('playlist');
+    const albumSelect = document.getElementById('albumSelect');
+    const shuffleState = document.getElementById('shuffleState');
+    const repeatState = document.getElementById('repeatState');
 
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const analyser = audioCtx.createAnalyser();
-    const source = audioCtx.createMediaElementSource(audio);
-    source.connect(analyser);
-    analyser.connect(audioCtx.destination);
-    analyser.fftSize = 256;
+    let currentPlaylist = [];
+    let shuffle = false;
+    let repeatMode = 0; // 0 = no repeat, 1 = repeat one, 2 = repeat all
 
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    function draw() {
-      requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      const barWidth = (canvas.width / bufferLength) * 2.5;
-      let barHeight, x = 0;
-
-      for (let i = 0; i < bufferLength; i++) {
-        barHeight = dataArray[i];
-        ctx.fillStyle = `rgb(${barHeight+100},50,50)`;
-        ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight / 2);
-        x += barWidth + 1;
-      }
-    }
-
-    draw();
-
-    // Playlist Management
-    let playlist = JSON.parse(localStorage.getItem('playlist')) || [];
-
-    // Update Playlist UI
-    function updatePlaylist() {
-      const playlistElement = document.getElementById('playlist');
-      playlistElement.innerHTML = '';
-      playlist.forEach((track, index) => {
+    function updateUI() {
+      playlistEl.innerHTML = '';
+      currentPlaylist.forEach((file, i) => {
         const li = document.createElement('li');
-        li.textContent = `Track ${index + 1}`;
-        playlistElement.appendChild(li);
-      });
-    }
-
-    // Add track to playlist
-    function addTrackToPlaylist() {
-      if (audio.src) {
-        playlist.push(audio.src);
-        localStorage.setItem('playlist', JSON.stringify(playlist));
-        updatePlaylist();
-      }
-    }
-
-    // Export Playlist as .json
-    function exportPlaylist() {
-      const blob = new Blob([JSON.stringify(playlist)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'playlist.json';
-      link.click();
-    }
-
-    // Import Playlist from .json
-    function importPlaylist() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.json';
-      input.onchange = (event) => {
-        const file = event.target.files[0];
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          try {
-            playlist = JSON.parse(e.target.result);
-            localStorage.setItem('playlist', JSON.stringify(playlist));
-            updatePlaylist();
-          } catch (error) {
-            alert('Invalid playlist file!');
-          }
+        li.className = 'playlist-entry';
+        const img = document.createElement('img');
+        img.src = file.thumb || 'https://via.placeholder.com/40?text=?';
+        const span = document.createElement('span');
+        span.textContent = file.name;
+        span.onclick = () => playFile(i);
+        const btn = document.createElement('button');
+        btn.textContent = '✖';
+        btn.onclick = () => {
+          currentPlaylist.splice(i, 1);
+          updateUI();
         };
-        reader.readAsText(file);
-      };
-      input.click();
-    }
-
-    // YouTube Search + Stream
-    async function searchYouTube(query) {
-      const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&key=YOUR_YOUTUBE_API_KEY`);
-      const data = await response.json();
-      const videoUrl = `https://www.youtube.com/watch?v=${data.items[0].id.videoId}`;
-      video.src = `https://www.youtube.com/embed/${data.items[0].id.videoId}`;
-      video.play();
-    }
-
-    // Trim/Crop Video (Simple Placeholder)
-    let trimming = false;
-    function toggleVideoTrim() {
-      trimming = !trimming;
-      if (trimming) {
-        alert('Trim Video feature activated! (Not implemented yet)');
-      } else {
-        alert('Video trimming ended.');
-      }
-    }
-
-    // MP3 Tag Editor (Basic Function)
-    function showMP3Tags() {
-      alert('Tag Editor feature (show + edit) will be implemented soon!');
-    }
-
-    // QR Code Generation
-    function generateQRCode() {
-      const playlistData = JSON.stringify(playlist);
-      qrCodeElement.innerHTML = ''; // Clear existing QR code
-      QRCode.toCanvas(qrCodeElement, playlistData, function (error) {
-        if (error) console.error(error);
-        console.log('QR code generated!');
+        li.append(img, span, btn);
+        playlistEl.appendChild(li);
       });
     }
 
-    // File loader (Audio/Video)
-    document.getElementById("fileInput").addEventListener("change", function () {
-      const file = this.files[0];
-      if (file.type.includes('audio')) {
-        audio.src = URL.createObjectURL(file);
-        audio.play();
-      } else if (file.type.includes('video')) {
-        video.src = URL.createObjectURL(file);
-        video.play();
+    function playFile(index) {
+      const file = currentPlaylist[index];
+      if (!file) return;
+
+      const player = file.type.startsWith('audio') ? audioPlayer : videoPlayer;
+      audioPlayer.style.display = file.type.startsWith('audio') ? 'block' : 'none';
+      videoPlayer.style.display = file.type.startsWith('video') ? 'block' : 'none';
+      audioPlayer.pause();
+      videoPlayer.pause();
+      player.src = file.url;
+      player.play();
+      player.onended = () => {
+        if (repeatMode === 1) return playFile(index); // Repeat one
+        let nextIndex = shuffle ? Math.floor(Math.random() * currentPlaylist.length) : index + 1;
+        if (nextIndex >= currentPlaylist.length) {
+          if (repeatMode === 2) playFile(0);
+        } else {
+          playFile(nextIndex);
+        }
+      };
+    }
+
+    function addFile(file) {
+      const url = URL.createObjectURL(file);
+      const type = file.type;
+      const entry = { name: file.name, url, type };
+
+      if (type.startsWith('audio')) {
+        entry.thumb = 'https://via.placeholder.com/40/0ff/000?text=♫';
+      } else if (type.startsWith('video')) {
+        const video = document.createElement('video');
+        video.src = url;
+        video.muted = true;
+        video.currentTime = 1;
+        video.onloadeddata = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 40;
+          canvas.height = 40;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, 40, 40);
+          entry.thumb = canvas.toDataURL();
+          updateUI();
+        };
       }
+
+      currentPlaylist.push(entry);
+      updateUI();
+    }
+
+    function handleFiles(files) {
+      for (let file of files) addFile(file);
+    }
+
+    function addUrl() {
+      const url = document.getElementById('urlInput').value;
+      const name = prompt("Enter a name for this URL:");
+      if (!url || !name) return;
+      const type = url.includes('.mp3') ? 'audio/mp3' : url.includes('.mp4') ? 'video/mp4' : 'unknown';
+      const thumb = type === 'audio/mp3' ? 'https://via.placeholder.com/40/0ff/000?text=♫' : 'https://via.placeholder.com/40/ff0/000?text=▶';
+      currentPlaylist.push({ name, url, type, thumb });
+      document.getElementById('urlInput').value = '';
+      updateUI();
+    }
+
+    function toggleShuffle() {
+      shuffle = !shuffle;
+      shuffleState.textContent = shuffle ? "On" : "Off";
+    }
+
+    function toggleRepeat() {
+      repeatMode = (repeatMode + 1) % 3;
+      repeatState.textContent = ["Off", "One", "All"][repeatMode];
+    }
+
+    function createAlbum() {
+      const name = document.getElementById('albumName').value;
+      if (!name) return alert("Name your album!");
+      currentPlaylist = [];
+      updateUI();
+    }
+
+    function saveAlbum() {
+      const name = document.getElementById('albumName').value;
+      if (!name) return alert("Enter album name!");
+      localStorage.setItem("album_" + name, JSON.stringify(currentPlaylist));
+      updateAlbumSelect();
+    }
+
+    function loadAlbum() {
+      const name = albumSelect.value;
+      const data = localStorage.getItem("album_" + name);
+      if (!data) return alert("Not found!");
+      currentPlaylist = JSON.parse(data);
+      updateUI();
+    }
+
+    function deleteAlbum() {
+      const name = albumSelect.value;
+      if (confirm("Delete album '" + name + "'?")) {
+        localStorage.removeItem("album_" + name);
+        updateAlbumSelect();
+      }
+    }
+
+    function updateAlbumSelect() {
+      albumSelect.innerHTML = '';
+      for (let key in localStorage) {
+        if (key.startsWith("album_")) {
+          const option = document.createElement('option');
+          option.value = key.replace("album_", "");
+          option.textContent = key.replace("album_", "");
+          albumSelect.appendChild(option);
+        }
+      }
+    }
+
+    document.getElementById('fileInput').addEventListener('change', e => handleFiles(e.target.files));
+
+    const dropzone = document.getElementById('dropzone');
+    dropzone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropzone.style.background = '#0ff2';
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.style.background = '';
+    });
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.style.background = '';
+      handleFiles(e.dataTransfer.files);
     });
 
-  </script>
+    updateAlbumSelect();
 
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+  </script>
 </body>
 </html>
 
