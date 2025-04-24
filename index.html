@@ -4,8 +4,6 @@
   <meta charset="UTF-8">
   <title>Next-Gen Music Player</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#0ff" />
   <style>
     body {
       font-family: sans-serif;
@@ -14,7 +12,6 @@
       text-align: center;
       margin: 0;
       padding: 0;
-      transition: background 0.5s;
     }
     canvas {
       width: 100%;
@@ -38,14 +35,6 @@
       flex-direction: column;
       align-items: center;
       margin-top: 20px;
-    }
-    .playlist button {
-      margin: 5px;
-      padding: 0.5rem;
-      background: #0ff;
-      color: #111;
-      border: none;
-      cursor: pointer;
     }
     #fileInput {
       margin: 10px;
@@ -80,6 +69,13 @@
     <button onclick="addTrackToPlaylist()">Add Current Track</button>
     <button onclick="clearPlaylist()">Clear Playlist</button>
     <ul id="playlist"></ul>
+  </div>
+
+  <!-- Stats Section -->
+  <div>
+    <h3>Listening Stats</h3>
+    <p id="totalTimePlayed">Total Time Played: 0 min</p>
+    <p id="trackCount">Track Count: 0</p>
   </div>
 
   <audio id="audioPlayer" controls></audio>
@@ -156,24 +152,34 @@
         audio.src = URL.createObjectURL(file);
         audio.play();
         audioCtx.resume(); // required by some browsers
+        updateTrackCount();
       }
     });
 
     // Playlist functionality
-    let playlist = [];
+    let playlist = JSON.parse(localStorage.getItem('playlist')) || [];
+    let recentlyPlayed = JSON.parse(localStorage.getItem('recentlyPlayed')) || [];
+    let mostPlayed = JSON.parse(localStorage.getItem('mostPlayed')) || [];
+    let totalTimePlayed = parseInt(localStorage.getItem('totalTimePlayed')) || 0;
+    let trackCount = parseInt(localStorage.getItem('trackCount')) || 0;
 
+    // Add track to playlist
     function addTrackToPlaylist() {
       if (audio.src) {
         playlist.push(audio.src);
+        localStorage.setItem('playlist', JSON.stringify(playlist));
         updatePlaylist();
       }
     }
 
+    // Clear Playlist
     function clearPlaylist() {
       playlist = [];
+      localStorage.setItem('playlist', JSON.stringify(playlist));
       updatePlaylist();
     }
 
+    // Update Playlist
     function updatePlaylist() {
       const playlistElement = document.getElementById('playlist');
       playlistElement.innerHTML = '';
@@ -183,6 +189,56 @@
         playlistElement.appendChild(li);
       });
     }
+
+    // Update Listening Stats
+    function updateTrackCount() {
+      trackCount++;
+      localStorage.setItem('trackCount', trackCount);
+      document.getElementById('trackCount').textContent = `Track Count: ${trackCount}`;
+    }
+
+    // Update Total Time Played
+    function updateTimePlayed() {
+      totalTimePlayed += audio.duration / 60;
+      localStorage.setItem('totalTimePlayed', totalTimePlayed);
+      document.getElementById('totalTimePlayed').textContent = `Total Time Played: ${totalTimePlayed.toFixed(2)} min`;
+    }
+
+    // Track playback completion
+    audio.onended = function() {
+      updateTimePlayed();
+      // Add to recently played
+      if (!recentlyPlayed.includes(audio.src)) {
+        recentlyPlayed.unshift(audio.src);
+        if (recentlyPlayed.length > 5) recentlyPlayed.pop();
+        localStorage.setItem('recentlyPlayed', JSON.stringify(recentlyPlayed));
+      }
+    }
+
+    // Shuffle / Repeat / Volume States
+    audio.onplay = function() {
+      if (localStorage.getItem('isShuffling') === 'true') {
+        audio.loop = true;
+      }
+      audio.volume = localStorage.getItem('volume') || 1;
+    }
+
+    // Set shuffle/repeat
+    function setShuffle() {
+      audio.loop = !audio.loop;
+      localStorage.setItem('isShuffling', audio.loop);
+    }
+
+    // Set volume
+    function setVolume(val) {
+      audio.volume = val;
+      localStorage.setItem('volume', val);
+    }
+
   </script>
+
+  <!-- Controls for shuffle/repeat -->
+  <button onclick="setShuffle()">🔁 Shuffle/Repeat</button>
+  <input type="range" min="0" max="1" step="0.01" onchange="setVolume(this.value)" value="1">
 </body>
 </html>
