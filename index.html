@@ -278,7 +278,6 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js');
     }
-    <script>
   function generateQRCode() {
     const playlistData = JSON.stringify(currentPlaylist); // Assuming currentPlaylist is the current playlist object
     const qrCodeContainer = document.getElementById("qrCodeContainer");
@@ -293,7 +292,17 @@
       height: 128
     });
   }
-</script>
+  function loadPlaylistFromQRCode(qrData) {
+    try {
+      const decodedPlaylist = JSON.parse(decodeURIComponent(qrData));
+      currentPlaylist = decodedPlaylist; // Assuming currentPlaylist is where your app stores the playlist
+      updateUI(); // Function to update the UI with the new playlist
+    } catch (e) {
+      console.error("Invalid QR code data", e);
+    }
+  }
+
+
 
   </script>
 </body>
