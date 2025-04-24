@@ -6,6 +6,8 @@
   <meta name="theme-color" content="#0ff" />
   <link rel="manifest" href="app.webmanifest" />
   <title>Media Player Pro+</title>
+  <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
@@ -103,6 +105,8 @@
     <audio id="audioPlayer" controls></audio>
     <video id="videoPlayer" controls style="display: none;"></video>
   </div>
+<button onclick="generateQRCode()">📲 Generate QR Code for Playlist</button>
+<div id="qrCodeContainer" style="margin-top: 20px;"></div>
 
   <script>
     const audioPlayer = document.getElementById('audioPlayer');
@@ -274,6 +278,23 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js');
     }
+    <script>
+  function generateQRCode() {
+    const playlistData = JSON.stringify(currentPlaylist); // Assuming currentPlaylist is the current playlist object
+    const qrCodeContainer = document.getElementById("qrCodeContainer");
+
+    // Clear any existing QR code
+    qrCodeContainer.innerHTML = '';
+
+    // Create a QR code for the playlist data
+    new QRCode(qrCodeContainer, {
+      text: encodeURIComponent(playlistData),
+      width: 128,
+      height: 128
+    });
+  }
+</script>
+
   </script>
 </body>
 </html>
