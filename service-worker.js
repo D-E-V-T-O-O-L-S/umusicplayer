@@ -1,7 +1,7 @@
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open('media-player-cache').then(cache => {
-      return cache.addAll(['index.html', 'manifest.json']);
+      return cache.addAll(['index.html', 'app.webmanifest']);
     })
   );
 });
