@@ -2,122 +2,313 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#0ff" />
+  <link rel="manifest" href="app.webmanifest" />
   <title>Media Player Pro+</title>
+  <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+
   <style>
     body {
+      font-family: 'Segoe UI', sans-serif;
       background: #111;
       color: #fff;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 2em;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
-    #waveform {
-      width: 100%;
-      background: #000;
-      border-radius: 8px;
-      margin-bottom: 1em;
-    }
-    audio {
-      width: 100%;
-      margin-top: 1em;
-    }
-    #statsDisplay {
-      margin-top: 1em;
-      font-size: 1.1em;
+    h1 {
       color: #0ff;
+    }
+    input, select, button {
+      padding: 0.4rem;
+      border-radius: 6px;
+      margin: 0.2rem;
+      border: none;
+    }
+    .controls, .playlist-container {
+      width: 100%;
+      max-width: 600px;
+      background: #222;
+      padding: 1rem;
+      border-radius: 10px;
+      margin: 1rem 0;
+    }
+    .dropzone {
+      border: 2px dashed #0ff;
+      padding: 1rem;
+      text-align: center;
+      border-radius: 10px;
+      margin-bottom: 1rem;
+    }
+    audio, video {
+      width: 100%;
+      margin-top: 10px;
+    }
+    .playlist-entry {
+      display: flex;
+      align-items: center;
+      background: #333;
+      border-radius: 6px;
+      padding: 5px;
+      margin-bottom: 6px;
+    }
+    .playlist-entry img {
+      width: 40px;
+      height: 40px;
+      object-fit: cover;
+      border-radius: 4px;
+      margin-right: 10px;
+    }
+    .playlist-entry span {
+      flex-grow: 1;
+      cursor: pointer;
+    }
+    .playlist-entry button {
+      background: #ff4444;
+      color: white;
+      margin-left: 5px;
+    }
+    .album-section {
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
   <h1>🎵 Media Player Pro+</h1>
 
-  <canvas id="waveform" height="60"></canvas>
+  <div class="controls">
+    <input type="file" id="fileInput" accept=".mp3,.mp4" multiple />
+    <div class="dropzone" id="dropzone">Drop MP3/MP4 files here</div>
 
-  <audio id="audioPlayer" controls>
-    <source src="your-audio-file.mp3" type="audio/mp3">
-    Your browser does not support the audio tag.
-  </audio>
+    <input type="text" id="urlInput" placeholder="Add online URL" />
+    <button onclick="addUrl()">➕ Add URL</button>
 
-  <div id="statsDisplay">Loading stats...</div>
+    <input type="text" id="albumName" placeholder="Album name" />
+    <button onclick="createAlbum()">🎼 Create Album</button>
+
+    <select id="albumSelect"></select>
+    <button onclick="saveAlbum()">💾 Save Album</button>
+    <button onclick="loadAlbum()">📂 Load</button>
+    <button onclick="deleteAlbum()">🗑️ Delete</button>
+
+    <div>
+      <button onclick="toggleShuffle()">🎲 Shuffle: <span id="shuffleState">Off</span></button>
+      <button onclick="toggleRepeat()">🔁 Repeat: <span id="repeatState">Off</span></button>
+    </div>
+  </div>
+
+  <div class="playlist-container">
+    <h2>Playlist</h2>
+    <ul id="playlist"></ul>
+    <audio id="audioPlayer" controls></audio>
+    <video id="videoPlayer" controls style="display: none;"></video>
+  </div>
+<button onclick="generateQRCode()">📲 Generate QR Code for Playlist</button>
+<div id="qrCodeContainer" style="margin-top: 20px;"></div>
 
   <script>
     const audioPlayer = document.getElementById('audioPlayer');
-    const canvas = document.getElementById('waveform');
-    const ctx = canvas.getContext('2d');
+    const videoPlayer = document.getElementById('videoPlayer');
+    const playlistEl = document.getElementById('playlist');
+    const albumSelect = document.getElementById('albumSelect');
+    const shuffleState = document.getElementById('shuffleState');
+    const repeatState = document.getElementById('repeatState');
 
-    // ==== Web Audio Waveform ====
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const analyser = audioCtx.createAnalyser();
-    const source = audioCtx.createMediaElementSource(audioPlayer);
-    source.connect(analyser);
-    analyser.connect(audioCtx.destination);
-    analyser.fftSize = 256;
+    let currentPlaylist = [];
+    let shuffle = false;
+    let repeatMode = 0; // 0 = no repeat, 1 = repeat one, 2 = repeat all
 
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
+    function updateUI() {
+      playlistEl.innerHTML = '';
+      currentPlaylist.forEach((file, i) => {
+        const li = document.createElement('li');
+        li.className = 'playlist-entry';
+        const img = document.createElement('img');
+        img.src = file.thumb || 'https://via.placeholder.com/40?text=?';
+        const span = document.createElement('span');
+        span.textContent = file.name;
+        span.onclick = () => playFile(i);
+        const btn = document.createElement('button');
+        btn.textContent = '✖';
+        btn.onclick = () => {
+          currentPlaylist.splice(i, 1);
+          updateUI();
+        };
+        li.append(img, span, btn);
+        playlistEl.appendChild(li);
+      });
+    }
 
-    function drawWaveform() {
-      requestAnimationFrame(drawWaveform);
-      analyser.getByteFrequencyData(dataArray);
+    function playFile(index) {
+      const file = currentPlaylist[index];
+      if (!file) return;
 
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const player = file.type.startsWith('audio') ? audioPlayer : videoPlayer;
+      audioPlayer.style.display = file.type.startsWith('audio') ? 'block' : 'none';
+      videoPlayer.style.display = file.type.startsWith('video') ? 'block' : 'none';
+      audioPlayer.pause();
+      videoPlayer.pause();
+      player.src = file.url;
+      player.play();
+      player.onended = () => {
+        if (repeatMode === 1) return playFile(index); // Repeat one
+        let nextIndex = shuffle ? Math.floor(Math.random() * currentPlaylist.length) : index + 1;
+        if (nextIndex >= currentPlaylist.length) {
+          if (repeatMode === 2) playFile(0);
+        } else {
+          playFile(nextIndex);
+        }
+      };
+    }
 
-      const barWidth = (canvas.width / bufferLength) * 1.5;
-      let x = 0;
+    function addFile(file) {
+      const url = URL.createObjectURL(file);
+      const type = file.type;
+      const entry = { name: file.name, url, type };
 
-      for (let i = 0; i < bufferLength; i++) {
-        const barHeight = dataArray[i] / 2;
-        ctx.fillStyle = "#0ff";
-        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-        x += barWidth + 1;
+      if (type.startsWith('audio')) {
+        entry.thumb = 'https://via.placeholder.com/40/0ff/000?text=♫';
+      } else if (type.startsWith('video')) {
+        const video = document.createElement('video');
+        video.src = url;
+        video.muted = true;
+        video.currentTime = 1;
+        video.onloadeddata = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 40;
+          canvas.height = 40;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, 40, 40);
+          entry.thumb = canvas.toDataURL();
+          updateUI();
+        };
+      }
+
+      currentPlaylist.push(entry);
+      updateUI();
+    }
+
+    function handleFiles(files) {
+      for (let file of files) addFile(file);
+    }
+
+    function addUrl() {
+      const url = document.getElementById('urlInput').value;
+      const name = prompt("Enter a name for this URL:");
+      if (!url || !name) return;
+      const type = url.includes('.mp3') ? 'audio/mp3' : url.includes('.mp4') ? 'video/mp4' : 'unknown';
+      const thumb = type === 'audio/mp3' ? 'https://via.placeholder.com/40/0ff/000?text=♫' : 'https://via.placeholder.com/40/ff0/000?text=▶';
+      currentPlaylist.push({ name, url, type, thumb });
+      document.getElementById('urlInput').value = '';
+      updateUI();
+    }
+
+    function toggleShuffle() {
+      shuffle = !shuffle;
+      shuffleState.textContent = shuffle ? "On" : "Off";
+    }
+
+    function toggleRepeat() {
+      repeatMode = (repeatMode + 1) % 3;
+      repeatState.textContent = ["Off", "One", "All"][repeatMode];
+    }
+
+    function createAlbum() {
+      const name = document.getElementById('albumName').value;
+      if (!name) return alert("Name your album!");
+      currentPlaylist = [];
+      updateUI();
+    }
+
+    function saveAlbum() {
+      const name = document.getElementById('albumName').value;
+      if (!name) return alert("Enter album name!");
+      localStorage.setItem("album_" + name, JSON.stringify(currentPlaylist));
+      updateAlbumSelect();
+    }
+
+    function loadAlbum() {
+      const name = albumSelect.value;
+      const data = localStorage.getItem("album_" + name);
+      if (!data) return alert("Not found!");
+      currentPlaylist = JSON.parse(data);
+      updateUI();
+    }
+
+    function deleteAlbum() {
+      const name = albumSelect.value;
+      if (confirm("Delete album '" + name + "'?")) {
+        localStorage.removeItem("album_" + name);
+        updateAlbumSelect();
       }
     }
 
-    audioPlayer.onplay = () => {
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      drawWaveform();
-    };
-
-    // ==== Listening Stats ====
-    let stats = JSON.parse(localStorage.getItem("mediaStats") || `{"plays":0,"time":0}`);
-    let trackStartTime = null;
-
-    function saveStats() {
-      localStorage.setItem("mediaStats", JSON.stringify(stats));
-    }
-
-    function startTimer() {
-      trackStartTime = Date.now();
-    }
-
-    function stopTimer() {
-      if (trackStartTime) {
-        const timeSpent = (Date.now() - trackStartTime) / 1000; // in seconds
-        stats.time += timeSpent;
-        trackStartTime = null;
-        saveStats();
+    function updateAlbumSelect() {
+      albumSelect.innerHTML = '';
+      for (let key in localStorage) {
+        if (key.startsWith("album_")) {
+          const option = document.createElement('option');
+          option.value = key.replace("album_", "");
+          option.textContent = key.replace("album_", "");
+          albumSelect.appendChild(option);
+        }
       }
     }
 
-    audioPlayer.addEventListener('play', () => {
-      stats.plays++;
-      startTimer();
-      saveStats();
+    document.getElementById('fileInput').addEventListener('change', e => handleFiles(e.target.files));
+
+    const dropzone = document.getElementById('dropzone');
+    dropzone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropzone.style.background = '#0ff2';
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.style.background = '';
+    });
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.style.background = '';
+      handleFiles(e.dataTransfer.files);
     });
 
-    audioPlayer.addEventListener('pause', stopTimer);
-    audioPlayer.addEventListener('ended', stopTimer);
-    window.addEventListener('beforeunload', stopTimer);
+    updateAlbumSelect();
 
-    // ==== Display Stats ====
-    function updateStatsDisplay() {
-      document.getElementById("statsDisplay").innerHTML =
-        `Tracks Played: ${stats.plays} | Time Listened: ${Math.floor(stats.time)} sec`;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
     }
+  function generateQRCode() {
+    const playlistData = JSON.stringify(currentPlaylist); // Assuming currentPlaylist is the current playlist object
+    const qrCodeContainer = document.getElementById("qrCodeContainer");
 
-    setInterval(updateStatsDisplay, 1000);
+    // Clear any existing QR code
+    qrCodeContainer.innerHTML = '';
+
+    // Create a QR code for the playlist data
+    new QRCode(qrCodeContainer, {
+      text: encodeURIComponent(playlistData),
+      width: 128,
+      height: 128
+    });
+  }
+  function loadPlaylistFromQRCode(qrData) {
+    try {
+      const decodedPlaylist = JSON.parse(decodeURIComponent(qrData));
+      currentPlaylist = decodedPlaylist; // Assuming currentPlaylist is where your app stores the playlist
+      updateUI(); // Function to update the UI with the new playlist
+    } catch (e) {
+      console.error("Invalid QR code data", e);
+    }
+  }
+
+
+
   </script>
 </body>
 </html>
+
+</body>
+</html>
+
 
